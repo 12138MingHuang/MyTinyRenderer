@@ -30,3 +30,7 @@
 *.exe
 *.out
 *.app
+.vs/
+
+#过滤文件夹Debug
+Debug/
