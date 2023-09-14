@@ -58,3 +58,23 @@ void Triangle::setFlatNormal() {
 	Vec3f normal_ = (Vec3f(v[0].x, v[0].y, v[0].z) - Vec3f(v[2].x, v[2].y, v[2].z)) ^ (Vec3f(v[1].x, v[1].y, v[1].z) - Vec3f(v[0].x, v[0].y, v[0].z));
 	flatNormal = normal_.normalize();
 }
+
+void Triangle::setVertex(int ind, Vec4f ver) {
+	v[ind] = ver;
+}
+void Triangle::setNormal(int ind, Vec3f n) {
+	normal[ind] = n;
+}
+
+void Triangle::setColor(int ind, float r, float g, float b) {
+	if ((r < 0.0) || (r > 255.) ||
+		(g < 0.0) || (g > 255.) ||
+		(b < 0.0) || (b > 255.)) {
+		fprintf(stderr, "ERROR! Invalid color values");
+		fflush(stderr);
+		exit(-1);
+	}
+
+	color[ind] = Vec3f((float)r / 255., (float)g / 255., (float)b / 255.);
+	return;
+}

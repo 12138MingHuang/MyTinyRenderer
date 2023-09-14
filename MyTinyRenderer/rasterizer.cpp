@@ -81,10 +81,23 @@ void rst::rasterizer::draw(std::vector<Triangle>& TriangleList) {
     Mat4f mvp = projectionMatrix * viewMartix * modelMartix;
 
     // 遍历三角形列表
-    for (const auto& t : TriangleList) {
+    for (auto& t : TriangleList) {
         // 初始化深度值和新三角形
         int depth = 255;// 认为n = 0.0f, f = 255.0f
         Triangle newtri = t;
+
+        std::vector<Vec4f> mm {
+            (viewMartix * modelMartix * t.v[0]),
+            (viewMartix * modelMartix * t.v[1]),
+            (viewMartix * modelMartix * t.v[2])
+        };
+
+        std::vector<Vec3f> viewspace_pos;
+
+        for (const Vec4f& v : mm) {
+            viewspace_pos.push_back(Vec3f(v.x, v.y, v.z));
+        }
+
 
         // 计算经过MVP变换的点，将三角形的顶点转化为Vec4f类型，并存储在数组v中
         Vec4f v[3];
@@ -132,14 +145,20 @@ void rst::rasterizer::draw(std::vector<Triangle>& TriangleList) {
             newtri.v[i] = v[i];
         }
 
+
         //newtri.computeFColor({ 1,0,0 });
         //newtri.computeGColor({ 1,0,0 });
+        //newtri.setFlatNormal();
+        newtri.setColor(0, 148, 121.0, 92.0);
+        newtri.setColor(1, 148, 121.0, 92.0);
+        newtri.setColor(2, 148, 121.0, 92.0);
 
-        newtri.setFlatNormal();
 
         // 光栅化新三角形，生成最终的图像
         //rasterizer_triangle(newtri);
-        rasterizer_triangle_msaa(newtri,2);
+        //rasterizer_triangle_msaa(newtri,2);
+        //rasterizer_triangle_new(newtri,viewspace_pos);
+        rasterizer_triangle_msaa_new(newtri, viewspace_pos, 2);
     }
 }
 
@@ -169,49 +188,6 @@ static std::tuple<float, float, float> computeBarycentric2D(const Vec4f* pts, fl
     return { alpha, beta, gamma };
 }
 
-void rst::rasterizer::rasterizer_triangle(Triangle& t) {
-    const Vec4f* pts = t.v;
-
-    float minx = std::min({ t.v[0].x,t.v[1].x,t.v[2].x });
-    float maxx = std::max({ t.v[0].x,t.v[1].x,t.v[2].x });
-    float miny = std::min({ t.v[0].y,t.v[1].y,t.v[2].y });
-    float maxy = std::max({ t.v[0].y,t.v[1].y,t.v[2].y });
-
-    int min_x = (int)std::floor(minx);
-    int max_x = (int)std::ceil(maxx);
-    int min_y = (int)std::floor(miny);
-    int max_y = (int)std::ceil(maxy);
-
-    for (int i = min_x; i <= max_x; i++) {
-        for (int j = min_y; j <= max_y; j++) {
-            Vec2i point(i, j);
-
-            /*
-             *像素通常被看作是一个点，其坐标为左上角的整数坐标。
-             *例如，(0,0)表示屏幕左上角的像素，(1,0)表示屏幕上第二个像素，(0,1)表示屏幕左边第二个像素。
-             *如果我们直接使用整数坐标来计算像素的重心坐标，那么很有可能会出现误差，导致像素填充不完整或者出现锯齿形状。
-             *因此，在计算重心坐标时，我们通常会将像素坐标加上0.5，这样可以将像素坐标放在像素中心位置，从而减小误差和锯齿的出现。
-            */
-            auto [alpha, beta, gamma] = computeBarycentric2D(pts, static_cast<float>(i + 0.5), static_cast<float>(j + 0.5));
-            if (alpha < 0 || beta < 0 || gamma < 0) continue;
-
-            // 对于每个在三角形内部的像素点，计算出其深度值、纹理坐标、颜色和法向量等信息，并调用fragmentShader函数对这些信息进行处理，得到最终的像素颜色
-            float z_interpolation = alpha * pts[0].z + beta * pts[1].z + gamma * pts[2].z;
-            Vec2f uv_interpolation = t.texCoords[0] * alpha + t.texCoords[1] * beta + t.texCoords[2] * gamma;
-            Vec3f color_interpolation = t.color[0] * alpha + t.color[1] * beta + t.color[2] * gamma;
-            Vec3f normal_interpolation = t.normal[0] * alpha + t.normal[1] * beta + t.normal[2] * gamma;
-            //fragment_shader_payload payload(color_interpolation, normal_interpolation, uv_interpolation, texture ? &*texture : nullptr);
-            fragment_shader_payload payload(color_interpolation, normal_interpolation, uv_interpolation, texture ? &*texture : nullptr, t.flatNormal);
-
-            // 比较当前像素点的深度值与深度缓冲区中该像素点处的深度值，如果当前像素点的深度值更大，则将其深度值更新，并将最终的像素颜色赋值给该像素点
-            if (z_interpolation > depth_buffer[static_cast<int>(i + j * width)]) {
-                depth_buffer[static_cast<int>(i + j * width)] = z_interpolation;
-                auto pixel_color = fragmentShader(payload);
-                set_pixel(point, pixel_color); // 设置像素点颜色
-            }
-        }
-    }
-}
 
 //void rst::rasterizer::rasterizer_triangle_msaa(Triangle& t, int sample_count = 2) {
 //	const Vec4f* pts = t.v;
@@ -256,6 +232,51 @@ void rst::rasterizer::rasterizer_triangle(Triangle& t) {
 //		}
 //	}
 //}
+
+
+void rst::rasterizer::rasterizer_triangle(Triangle& t) {
+    const Vec4f* pts = t.v;
+
+    float minx = std::min({ t.v[0].x,t.v[1].x,t.v[2].x });
+    float maxx = std::max({ t.v[0].x,t.v[1].x,t.v[2].x });
+    float miny = std::min({ t.v[0].y,t.v[1].y,t.v[2].y });
+    float maxy = std::max({ t.v[0].y,t.v[1].y,t.v[2].y });
+
+    int min_x = (int)std::floor(minx);
+    int max_x = (int)std::ceil(maxx);
+    int min_y = (int)std::floor(miny);
+    int max_y = (int)std::ceil(maxy);
+
+    for (int i = min_x; i <= max_x; i++) {
+        for (int j = min_y; j <= max_y; j++) {
+            Vec2i point(i, j);
+
+            /*
+             *像素通常被看作是一个点，其坐标为左上角的整数坐标。
+             *例如，(0,0)表示屏幕左上角的像素，(1,0)表示屏幕上第二个像素，(0,1)表示屏幕左边第二个像素。
+             *如果我们直接使用整数坐标来计算像素的重心坐标，那么很有可能会出现误差，导致像素填充不完整或者出现锯齿形状。
+             *因此，在计算重心坐标时，我们通常会将像素坐标加上0.5，这样可以将像素坐标放在像素中心位置，从而减小误差和锯齿的出现。
+            */
+            auto [alpha, beta, gamma] = computeBarycentric2D(pts, static_cast<float>(i + 0.5), static_cast<float>(j + 0.5));
+            if (alpha < 0 || beta < 0 || gamma < 0) continue;
+
+            // 对于每个在三角形内部的像素点，计算出其深度值、纹理坐标、颜色和法向量等信息，并调用fragmentShader函数对这些信息进行处理，得到最终的像素颜色
+            float z_interpolation = alpha * pts[0].z + beta * pts[1].z + gamma * pts[2].z;
+            Vec2f uv_interpolation = t.texCoords[0] * alpha + t.texCoords[1] * beta + t.texCoords[2] * gamma;
+            Vec3f color_interpolation = t.color[0] * alpha + t.color[1] * beta + t.color[2] * gamma;
+            Vec3f normal_interpolation = t.normal[0] * alpha + t.normal[1] * beta + t.normal[2] * gamma;
+            //fragment_shader_payload payload(color_interpolation, normal_interpolation, uv_interpolation, texture ? &*texture : nullptr);
+            fragment_shader_payload payload(color_interpolation, normal_interpolation, uv_interpolation, texture ? &*texture : nullptr, t.flatNormal);
+
+            // 比较当前像素点的深度值与深度缓冲区中该像素点处的深度值，如果当前像素点的深度值更大，则将其深度值更新，并将最终的像素颜色赋值给该像素点
+            if (z_interpolation > depth_buffer[static_cast<int>(i + j * width)]) {
+                depth_buffer[static_cast<int>(i + j * width)] = z_interpolation;
+                auto pixel_color = fragmentShader(payload);
+                set_pixel(point, pixel_color); // 设置像素点颜色
+            }
+        }
+    }
+}
 
 void rst::rasterizer::rasterizer_triangle_msaa(Triangle& t, int sample_count = 2) {
 	const Vec4f* pts = t.v;
@@ -308,4 +329,111 @@ void rst::rasterizer::rasterizer_triangle_msaa(Triangle& t, int sample_count = 2
             }
 		}
 	}
+}
+
+
+void rst::rasterizer::rasterizer_triangle_new(Triangle& t, std::vector<Vec3f> view_pos) {
+    const Vec4f* pts = t.v;
+
+    float minx = std::min({ t.v[0].x,t.v[1].x,t.v[2].x });
+    float maxx = std::max({ t.v[0].x,t.v[1].x,t.v[2].x });
+    float miny = std::min({ t.v[0].y,t.v[1].y,t.v[2].y });
+    float maxy = std::max({ t.v[0].y,t.v[1].y,t.v[2].y });
+
+    int min_x = (int)std::floor(minx);
+    int max_x = (int)std::ceil(maxx);
+    int min_y = (int)std::floor(miny);
+    int max_y = (int)std::ceil(maxy);
+
+    for (int i = min_x; i <= max_x; i++) {
+        for (int j = min_y; j <= max_y; j++) {
+            Vec2i point(i, j);
+
+            /*
+             *像素通常被看作是一个点，其坐标为左上角的整数坐标。
+             *例如，(0,0)表示屏幕左上角的像素，(1,0)表示屏幕上第二个像素，(0,1)表示屏幕左边第二个像素。
+             *如果我们直接使用整数坐标来计算像素的重心坐标，那么很有可能会出现误差，导致像素填充不完整或者出现锯齿形状。
+             *因此，在计算重心坐标时，我们通常会将像素坐标加上0.5，这样可以将像素坐标放在像素中心位置，从而减小误差和锯齿的出现。
+            */
+            auto [alpha, beta, gamma] = computeBarycentric2D(pts, static_cast<float>(i + 0.5), static_cast<float>(j + 0.5));
+            if (alpha < 0 || beta < 0 || gamma < 0) continue;
+
+            // 对于每个在三角形内部的像素点，计算出其深度值、纹理坐标、颜色和法向量等信息，并调用fragmentShader函数对这些信息进行处理，得到最终的像素颜色
+            float z_interpolation = alpha * pts[0].z + beta * pts[1].z + gamma * pts[2].z;
+            Vec2f uv_interpolation = t.texCoords[0] * alpha + t.texCoords[1] * beta + t.texCoords[2] * gamma;
+            Vec3f color_interpolation = t.color[0] * alpha + t.color[1] * beta + t.color[2] * gamma;
+            Vec3f normal_interpolation = t.normal[0] * alpha + t.normal[1] * beta + t.normal[2] * gamma;
+            Vec3f shadingcoords_interpolated = view_pos[0] * alpha + view_pos[1] * beta + view_pos[2] * gamma;
+
+            //fragment_shader_payload payload(color_interpolation, normal_interpolation, uv_interpolation, texture ? &*texture : nullptr);
+            fragment_shader_payload payload(color_interpolation, normal_interpolation, uv_interpolation, texture ? &*texture : nullptr, t.flatNormal);
+
+            payload.view_pos = shadingcoords_interpolated;
+
+            // 比较当前像素点的深度值与深度缓冲区中该像素点处的深度值，如果当前像素点的深度值更大，则将其深度值更新，并将最终的像素颜色赋值给该像素点
+            if (z_interpolation > depth_buffer[static_cast<int>(i + j * width)]) {
+                depth_buffer[static_cast<int>(i + j * width)] = z_interpolation;
+                auto pixel_color = fragmentShader(payload);
+                set_pixel(point, pixel_color); // 设置像素点颜色
+            }
+        }
+    }
+}
+
+void rst::rasterizer::rasterizer_triangle_msaa_new(Triangle& t, std::vector<Vec3f> view_pos, int sample_count) {
+    const Vec4f* pts = t.v;
+
+    float minx = std::min({ t.v[0].x,t.v[1].x,t.v[2].x });
+    float maxx = std::max({ t.v[0].x,t.v[1].x,t.v[2].x });
+    float miny = std::min({ t.v[0].y,t.v[1].y,t.v[2].y });
+    float maxy = std::max({ t.v[0].y,t.v[1].y,t.v[2].y });
+
+    int min_x = (int)std::floor(minx);
+    int max_x = (int)std::ceil(maxx);
+    int min_y = (int)std::floor(miny);
+    int max_y = (int)std::ceil(maxy);
+
+    for (int i = min_x; i <= max_x; i++) {
+        for (int j = min_y; j <= max_y; j++) {
+            Vec2i point(i, j);
+            //判断是否通过了深度测试
+            int judge = 0;
+            for (int k = 0; k < sample_count * sample_count; k++)
+            {
+                auto [alpha, beta, gamma] = computeBarycentric2D(pts, static_cast<float>(i + getSuperSampleStep(sample_count)[k].x), static_cast<float>(j + getSuperSampleStep(sample_count)[k].y));
+                if (alpha < 0 || beta < 0 || gamma < 0) continue;
+                // 对于每个在三角形内部的像素点，计算出其深度值、纹理坐标、颜色和法向量等信息，并调用fragmentShader函数对这些信息进行处理，得到最终的像素颜色
+                float z_interpolation = alpha * pts[0].z + beta * pts[1].z + gamma * pts[2].z;
+                Vec2f uv_interpolation = t.texCoords[0] * alpha + t.texCoords[1] * beta + t.texCoords[2] * gamma;
+                Vec3f color_interpolation = t.color[0] * alpha + t.color[1] * beta + t.color[2] * gamma;
+                Vec3f normal_interpolation = t.normal[0] * alpha + t.normal[1] * beta + t.normal[2] * gamma;
+                Vec3f shadingcoords_interpolated = view_pos[0] * alpha + view_pos[1] * beta + view_pos[2] * gamma;
+
+                //fragment_shader_payload payload(color_interpolation, normal_interpolation, uv_interpolation, texture ? &*texture : nullptr);
+                fragment_shader_payload payload(color_interpolation, normal_interpolation, uv_interpolation, texture ? &*texture : nullptr, t.flatNormal);
+
+                payload.view_pos = shadingcoords_interpolated;
+
+                // 比较当前像素点的深度值与深度缓冲区中该像素点处的深度值，如果当前像素点的深度值更大，则将其深度值更新，并将最终的像素颜色赋值给该像素点
+                if (z_interpolation > super_depth_buffer[get_super_index(i, j, sample_count) + k]) {
+                    judge = 1;
+                    auto pixel_color = fragmentShader(payload);
+                    super_depth_buffer[get_super_index(i, j, sample_count) + k] = z_interpolation;
+                    super_frame_buffer[get_super_index(i, j, sample_count) + k] = pixel_color;
+                }
+            }
+            if (judge)
+                //若像素的四个样本中有一个通过了深度测试，就需要对该像素进行着色，因为有一个通过就说明有颜色，就需要着色。
+            {
+                Vec3f color = Vec3f(0.0f, 0.0f, 0.0f);
+                for (int l = 0; l < sample_count; ++l) {
+                    for (int m = 0; m < sample_count; ++m) {
+                        color = color + super_frame_buffer[get_super_index(i, j, sample_count) + l * sample_count + m];
+                    }
+                }
+                color = color * (1 / float(sample_count * sample_count));
+                set_pixel(point, color);
+            }
+        }
+    }
 }

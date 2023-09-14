@@ -75,6 +75,16 @@ namespace rst {
 		@param t 要光栅化的三角形。
 		*/
 		void rasterizer_triangle_msaa(Triangle& t, int sample_count);
+
+		/**
+		* @brief 光栅化单个三角形。也就是要进行采样，可以采用包围盒采样或逐行检测采样，这里采用前者。
+		* @param t 要光栅化的三角形。
+		* @param view_pos 三角形的三个顶点在视口坐标系中的坐标。
+		* 		
+		*/
+		void rasterizer_triangle_new(Triangle& t, std::vector<Vec3f> view_pos);
+
+		void rasterizer_triangle_msaa_new(Triangle& t, std::vector<Vec3f> view_pos, int sample_count);
 	public:
 		std::vector<Vec3f> frame_buffer; // 存储像素颜色的帧缓冲区。
 		std::vector<Vec3f> super_frame_buffer; // 用于超采样的帧缓冲区。

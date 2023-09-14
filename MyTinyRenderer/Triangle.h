@@ -38,7 +38,41 @@ public:
 	void computeFColor(Vec3f light_dir);
 
 	/**
-	* 计算并且获取三角形的法向量
+	* 计算并获取三角形的法向量
+	*
+	* @return 无返回值，但会更新三角形的法向量
 	*/
 	void setFlatNormal();
+
+	/**
+	 * 设置第 i 个顶点的坐标
+	 *
+	 * @param ind 顶点索引
+	 * @param ver 顶点坐标
+	 *
+	 * @return 无返回值，但会更新第 i 个顶点的坐标
+	*/
+	void setVertex(int ind, Vec4f ver);
+
+	/**
+	 * 设置第 i 个顶点的法向量
+	 *
+	 * @param ind 顶点索引
+	 * @param n 法向量
+	 *
+	 * @return 无返回值，但会更新第 i 个顶点的法向量
+	*/
+	void setNormal(int ind, Vec3f n);
+
+	/**
+	 * 设置第 i 个顶点的颜色
+	 *
+	 * @param ind 顶点索引
+	 * @param r 红色分量
+	 * @param g 绿色分量
+	 * @param b 蓝色分量
+	 *
+	 * @return 无返回值，但会更新第 i 个顶点的颜色
+	*/
+	void setColor(int ind, float r, float g, float b);
 };
