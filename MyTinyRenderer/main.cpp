@@ -18,6 +18,11 @@ Vec3f light_dir(0, 0, 1);//平行光方向
 Vec3f cameraPos(0, 0, 3);//相机摆放的位置
 Vec3f lightDir(0, 0, -1);//平行光方向
 
+struct light
+{
+	Vec3f position;//光源位置
+	Vec3f intensity;//光源强度
+};
 
 //模型变换矩阵
 Mat4f modelMatrix()
@@ -96,6 +101,246 @@ Vec3f G_fragment_shader(const fragment_shader_payload& payload) {
 	return color_frag;
 }
 
+//Phong着色
+Vec3f phong_fragment_shader(const fragment_shader_payload& payload) {
+
+	Vec3f ka = Vec3f(0.005, 0.005, 0.005);//环境光系数
+	Vec3f kd = payload.color;//漫反射系数
+	Vec3f ks = Vec3f(0.7937, 0.7937, 0.7937);//高光(镜面)反射系数
+
+	auto l1 = light{ {20,20,20},{500,500,500} };
+	auto l2 = light{ {-20,20,0},{500,500,500} };
+	std::vector<light> lights = { l1,l2 };//光源
+
+	Vec3f amb_light_intensity{ 10,10,10 };//环境光强度
+	Vec3f eye_pos = { 0,0,10 };//相机位置
+
+	float p = 150;//高光系数
+
+	Vec3f color = payload.color;//顶点颜色
+	Vec3f point = payload.view_pos;//顶点位置
+	Vec3f normal = payload.normal;//顶点法向量
+
+	Vec3f result_color = Vec3f(0, 0, 0);//最终颜色
+
+	/*
+	* 环境光，漫反射，镜面反射都是通过标量与标量相乘得到的；
+	* 尽管使用了向量，但是向量的每个分量都是相同的(就代表是一个标量)，所以这里使用向量的逐元素乘法
+	*/
+
+	//计算环境光
+	Vec3f ambient = { 0,0,0 };
+	ambient = ka.cwiseProduct(amb_light_intensity); //环境光 = 环境光系数 * 环境光强度,  ka * Ia
+
+	//漫反射
+	Vec3f diffuse = { 0,0,0 };
+	//镜面反射
+	Vec3f specular = { 0,0,0 };
+
+	for (auto& light : lights)
+	{
+		Vec3f light_dir = light.position - point;//光线方向
+		float r2 = light_dir.norm() * light_dir.norm();//光线方向的模长的平方
+		light_dir.normalize();//光线方向归一化
+
+		//计算漫反射
+		diffuse = diffuse + kd.cwiseProduct(light.intensity / r2) * std::max(0.f, normal * light_dir); //漫反射 = 漫反射系数 * (光强度 / 光线方向的模长的平方) * (法向量 * 光线方向),  kd * (I/r^2)*max(0,n*l)
+
+		Vec3f view_dir = (eye_pos - point).normalize();//视线方向
+		Vec3f half_dir = (light_dir + view_dir).normalize();//半程向量
+
+		//计算镜面反射
+		specular = specular + ks.cwiseProduct(light.intensity / r2) * std::pow(std::max(0.f, normal * half_dir), p); //镜面反射 = 镜面反射系数 * (光强度 / 光线方向的模长的平方) * (法向量 * 半程向量)^p  , ks * (I/r^2)*max(0,n*h)^p
+	}
+
+	result_color = ambient + diffuse + specular; //最终颜色 = 环境光 + 漫反射 + 镜面反射
+
+	return result_color;
+}
+
+//纹理着色
+Vec3f texture_fragment_shader(const fragment_shader_payload& payload) {
+	Vec3f return_color = { 0, 0, 0 };
+	if (payload.texture)
+	{
+		// 从纹理中获取颜色
+		return_color = Vec3f(payload.texture->getColor(payload.tex_coords.x, payload.tex_coords.y).bgra[2] / 255.0f,
+			payload.texture->getColor(payload.tex_coords.x, payload.tex_coords.y).bgra[1] / 255.0f,
+			payload.texture->getColor(payload.tex_coords.x, payload.tex_coords.y).bgra[0] / 255.0f);
+	}
+	Vec3f texture_color;
+	texture_color = return_color * 255;
+
+	Vec3f ka = Vec3f(0.005, 0.005, 0.005);//环境光系数
+	Vec3f kd = texture_color / 255.f;//漫反射系数
+	Vec3f ks = Vec3f(0.7937, 0.7937, 0.7937);//高光(镜面)反射系数
+
+	auto l1 = light{ {20,20,20},{500,500,500} };
+	auto l2 = light{ {-20,20,0},{500,500,500} };
+	std::vector<light> lights = { l1,l2 };//光源
+
+	Vec3f amb_light_intensity{ 10,10,10 };//环境光强度
+	Vec3f eye_pos = { 0,0,10 };//相机位置
+
+	float p = 150;//高光系数
+
+	Vec3f color = payload.color;//顶点颜色
+	Vec3f point = payload.view_pos;//顶点位置
+	Vec3f normal = payload.normal;//顶点法向量
+
+	Vec3f result_color = Vec3f(0, 0, 0);//最终颜色
+
+	//计算环境光
+	Vec3f ambient = { 0,0,0 };
+	ambient = ka.cwiseProduct(amb_light_intensity); //环境光 = 环境光系数 * 环境光强度,  ka * Ia
+
+	//漫反射
+	Vec3f diffuse = { 0,0,0 };
+	//镜面反射
+	Vec3f specular = { 0,0,0 };
+
+	for (auto& light : lights)
+	{
+		Vec3f light_dir = light.position - point;//光线方向
+		float r2 = light_dir.norm() * light_dir.norm();//光线方向的模长的平方
+		light_dir.normalize();//光线方向归一化
+
+		//计算漫反射
+		diffuse = diffuse + kd.cwiseProduct(light.intensity / r2) * std::max(0.f, normal * light_dir); //漫反射 = 漫反射系数 * (光强度 / 光线方向的模长的平方) * (法向量 * 光线方向),  kd * (I/r^2)*max(0,n*l)
+
+		Vec3f view_dir = (eye_pos - point).normalize();//视线方向
+		Vec3f half_dir = (light_dir + view_dir).normalize();//半程向量
+
+		//计算镜面反射
+		specular = specular + ks.cwiseProduct(light.intensity / r2) * std::pow(std::max(0.f, normal * half_dir), p); //镜面反射 = 镜面反射系数 * (光强度 / 光线方向的模长的平方) * (法向量 * 半程向量)^p  , ks * (I/r^2)*max(0,n*h)^p
+	}
+
+	result_color = ambient + diffuse + specular; //最终颜色 = 环境光 + 漫反射 + 镜面反射
+
+	return result_color;
+}
+
+//凹凸纹理着色
+Vec3f bump_fragment_shader(const fragment_shader_payload& payload)
+{
+
+	Vec3f ka = Vec3f(0.005, 0.005, 0.005);//环境光系数
+	Vec3f kd = payload.color;//漫反射系数
+	Vec3f ks = Vec3f(0.7937, 0.7937, 0.7937);//高光(镜面)反射系数
+
+	auto l1 = light{ {20,20,20},{500,500,500} };
+	auto l2 = light{ {-20,20,0},{500,500,500} };
+
+	std::vector<light> lights = { l1,l2 };//光源
+	Vec3f amb_light_intensity{ 10,10,10 };//环境光强度
+	Vec3f eye_pos = { 0,0,10 };//相机位置
+
+	float p = 150;//高光系数
+
+	Vec3f color = payload.color;//顶点颜色
+	Vec3f point = payload.view_pos;//顶点位置
+	Vec3f normal = payload.normal;//顶点法向量
+
+	// 设置凹凸贴图参数
+	float kh = 0.2, kn = 0.1;
+	float u = payload.tex_coords.x;
+	float v = payload.tex_coords.y;
+	float w = payload.texture->width;
+	float h = payload.texture->height;
+
+	// 计算切线（t）、副切线（b）和法线（normal）的 TBN 矩阵
+	auto [x, y, z] = std::tuple{ normal[0], normal[1], normal[2] };
+	Vec3f t = { x * y / sqrt(x * x + z * z), sqrt(x * x + z * z), z * y / sqrt(x * x + z * z) };
+	Vec3f b = normal ^ t;
+	Mat3f TBN;
+	TBN << t, b, normal;
+
+	// 计算法线贴图的偏移量以更新法线
+	float dU = kh * kn * (payload.texture->getColor(u + 1.0f / w, v).bgra[2] - payload.texture->getColor(u, v).bgra[2]);
+	float dV = kh * kn * (payload.texture->getColor(u, v + 1.0f / h).bgra[2] - payload.texture->getColor(u, v).bgra[2]);
+	Vec3f ln = { -dU, -dV, 1 };
+	normal = (TBN * ln).normalize();
+
+	Vec3f result_color = { 0, 0, 0 };
+	result_color = normal;
+
+	return result_color * 255.f;
+}
+
+//凹凸纹理着色(也计算了环境光、漫反射和镜面反射的贡献，但它额外考虑了法线贴图对顶点位置的影响。这使得它可以模拟出更真实的表面细节，例如表面的凹凸。)
+Vec3f displacement_fragment_shader(const fragment_shader_payload& payload)
+{
+
+	Vec3f ka = Vec3f(0.005, 0.005, 0.005);//环境光系数
+	Vec3f kd = payload.color;//漫反射系数
+	Vec3f ks = Vec3f(0.7937, 0.7937, 0.7937);//高光(镜面)反射系数
+
+	auto l1 = light{ {20,20,20},{500,500,500} };
+	auto l2 = light{ {-20,20,0},{500,500,500} };
+
+	std::vector<light> lights = { l1,l2 };//光源
+	Vec3f amb_light_intensity{ 10,10,10 };//环境光强度
+	Vec3f eye_pos = { 0,0,10 };//相机位置
+
+	float p = 150;//高光系数
+
+	Vec3f color = payload.color;//顶点颜色
+	Vec3f point = payload.view_pos;//顶点位置
+	Vec3f normal = payload.normal;//顶点法向量
+
+	// 设置凹凸贴图参数
+	float kh = 0.2, kn = 0.1;
+	float u = payload.tex_coords.x;
+	float v = payload.tex_coords.y;
+	float w = payload.texture->width;
+	float h = payload.texture->height;
+
+	// 计算切线（t）、副切线（b）和法线（normal）的 TBN 矩阵
+	auto [x, y, z] = std::tuple{ normal[0], normal[1], normal[2] };
+	Vec3f t = { x * y / sqrt(x * x + z * z), sqrt(x * x + z * z), z * y / sqrt(x * x + z * z) };
+	Vec3f b = normal ^ t;
+	Mat3f TBN;
+	TBN << t, b, normal;
+
+	// 计算法线贴图的偏移量以更新法线
+	float dU = kh * kn * (payload.texture->getColor(u + 1.0f / w, v).bgra[2] - payload.texture->getColor(u, v).bgra[2]);
+	float dV = kh * kn * (payload.texture->getColor(u, v + 1.0f / h).bgra[2] - payload.texture->getColor(u, v).bgra[2]);
+	Vec3f ln = { -dU, -dV, 1 };
+	point = point + normal * kn * payload.texture->getColor(u, v).bgra[2];
+	normal = (TBN * ln).normalize();
+
+	Vec3f result_color = { 0, 0, 0 };
+
+	//计算环境光
+	Vec3f ambient = { 0,0,0 };
+	ambient = ka.cwiseProduct(amb_light_intensity); //环境光 = 环境光系数 * 环境光强度,  ka * Ia
+
+	//漫反射
+	Vec3f diffuse = { 0,0,0 };
+	//镜面反射
+	Vec3f specular = { 0,0,0 };
+
+	for (auto& light : lights)
+	{
+		Vec3f light_dir = light.position - point;//光线方向
+		float r2 = light_dir.norm() * light_dir.norm();//光线方向的模长的平方
+		light_dir.normalize();//光线方向归一化
+
+		//计算漫反射
+		diffuse = diffuse + kd.cwiseProduct(light.intensity / r2) * std::max(0.f, normal * light_dir); //漫反射 = 漫反射系数 * (光强度 / 光线方向的模长的平方) * (法向量 * 光线方向),  kd * (I/r^2)*max(0,n*l)
+
+		Vec3f view_dir = (eye_pos - point).normalize();//视线方向
+		Vec3f half_dir = (light_dir + view_dir).normalize();//半程向量
+
+		//计算镜面反射
+		specular = specular + ks.cwiseProduct(light.intensity / r2) * std::pow(std::max(0.f, normal * half_dir), p); //镜面反射 = 镜面反射系数 * (光强度 / 光线方向的模长的平方) * (法向量 * 半程向量)^p  , ks * (I/r^2)*max(0,n*h)^p
+	}
+
+	result_color = ambient + diffuse + specular; //最终颜色 = 环境光 + 漫反射 + 镜面反射
+
+	return result_color;
+}
+
 
 int main(int argc, char** argv) {
 	if (2 == argc) {
@@ -130,9 +375,13 @@ int main(int argc, char** argv) {
 
 	//设置顶点着色器和片元着色器
 	r.set_vertexShader(vertex_shader);
-	//r.set_fragmentShader(normal_fragment_shader);
-	//r.set_fragmentShader(F_fragment_shader);
-	r.set_fragmentShader(G_fragment_shader);
+	//r.set_fragmentShader(normal_fragment_shader); //法线着色
+	//r.set_fragmentShader(F_fragment_shader); //Flat着色
+	//r.set_fragmentShader(G_fragment_shader); //Gouraud着色
+	//r.set_fragmentShader(phong_fragment_shader); //Phong着色
+	//r.set_fragmentShader(texture_fragment_shader); //纹理着色
+	//r.set_fragmentShader(bump_fragment_shader); //凹凸纹理着色
+	//r.set_fragmentShader(displacement_fragment_shader); //凹凸纹理着色
 
 	//绘制模型
 	r.draw(model->TriangleList);
