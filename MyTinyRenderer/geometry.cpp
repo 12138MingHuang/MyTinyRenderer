@@ -210,6 +210,24 @@ std::ostream& operator<<(std::ostream& s, Mat3f& m)
 	}
 	return s;
 }
+
+Mat3f& Mat3f::operator<<(const Vec3f& v) {
+	// 确保当前行的索引在有效范围内
+	static int currentRow = 0;
+	if (currentRow >= 3) {
+		currentRow = 0; // 重置到第一行
+	}
+
+	// 将 Vec3f 中的数据复制到当前行
+	rows[currentRow][0] = v.x;
+	rows[currentRow][1] = v.y;
+	rows[currentRow][2] = v.z;
+
+	currentRow++; // 移到下一行
+
+	return *this;
+}
+
 #pragma endregion
 
 #pragma region 四阶方阵

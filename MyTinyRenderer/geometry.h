@@ -193,6 +193,14 @@ public:
 	static Mat3f identity();
 
 	/**
+	* @brief重载流插入运算符，在 Mat3f 类中添加一个成员函数用于按行添加 Vec3f 向量
+	* @param v 要输出的Vec3f对象。
+	* @return 返回三维矩阵的引用，可以用于链式输出。
+	* 	 
+	*/
+	Mat3f& operator<<(const Vec3f& v);
+
+	/**
 	 * @brief重载流插入运算符，用于将矩阵的值输出到流中。
 	 * @param s 输出流对象。
 	 * @param m 要输出的Mat3f对象。
